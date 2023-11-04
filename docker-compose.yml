@@ -1,0 +1,127 @@
+version: '3'
+volumes:
+  grafana:
+
+services:
+  csharp-subscriber:
+    build:
+      context: ./csharp-subscriber
+    depends_on:
+      - hivemq
+    environment:
+      - MQTT_BROKER_HOST=hivemq
+      - MQTT_TOPIC=sensor
+    networks:
+     - hivemq-test
+
+  data-java-publisher:
+    container_name: data-java-pub
+    build:
+      context: ./data-java-publisher
+    depends_on:
+      - hivemq
+    networks:
+      - hivemq-test
+    environment:
+      - MQTT_BROKER_HOST=hivemq
+      - MQTT_TOPIC=sensor
+      
+    
+  data-publisher:
+    container_name: data-pub
+    build:
+      context: ./data-publisher
+    depends_on:
+      - hivemq
+    networks:
+      - hivemq-test
+    environment:
+        - MQTT_BROKER_HOST=hivemq
+        - MQTT_TOPIC=sensor
+
+  data-subscriber:
+    container_name: data-sub
+    build:
+      context: ./data-subscriber
+    depends_on:
+      - hivemq
+    networks:
+      - hivemq-test
+    environment:
+      - MQTT_BROKER_HOST=hivemq
+      - MQTT_TOPIC=sensor
+  
+  telegraf:
+    image: telegraf
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+    command: >
+            sh -c "sleep 10 && telegraf --config /etc/telegraf/telegraf.conf"
+    restart: on-failure  
+    environment:
+      - DOCKER_INFLUXDB_INIT_ORG=org
+      - DOCKER_INFLUXDB_INIT_BUCKET=bucket
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=secret_token
+    depends_on:
+      - hivemq
+      - influxdb
+    networks:
+      - hivemq-test
+  
+  influxdb:
+    image: influxdb
+    ports:
+      - 8086:8086
+    volumes:
+      - ./influxdb:/var/lib/influxdb
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=test
+      - DOCKER_INFLUXDB_INIT_PASSWORD=test1234
+      - DOCKER_INFLUXDB_INIT_ORG=org
+      - DOCKER_INFLUXDB_INIT_BUCKET=bucket
+      - DOCKER_INFLUXDB_INIT_RETENTION=1w
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=secret_token
+    networks:
+      - hivemq-test
+  
+  grafana:
+    image: grafana/grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - hivemq-test
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - 9090:9090
+    volumes:
+      - ./hivemq/extensions/hivemq-prometheus-extension/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - hivemq-test
+      
+  hivemq:
+    image: hivemq/hivemq4
+    ports:
+      - 1883:1883
+      - 8000:8000
+      - 8080:8080
+      - 9399:9399
+    volumes:
+      - ./hivemq/config/config.xml:/opt/hivemq/conf/config.xml
+      - ./hivemq/extensions/hivemq-mqtt-message-log-extension:/opt/hivemq/extensions/hivemq-mqtt-message-log-extension
+      - ./hivemq/extensions/hivemq-influxdb-extension:/opt/hivemq/extensions/hivemq-influxdb-extension
+      - ./hivemq/extensions/hivemq-prometheus-extension:/opt/hivemq/extensions/hivemq-prometheus-extension
+    networks:
+      - hivemq-test
+
+networks:
+  hivemq-test:
+
+
